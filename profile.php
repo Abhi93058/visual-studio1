@@ -11,17 +11,14 @@ if (!isset($_SESSION['username'])) {
 }
 
 $username = $_SESSION['username'];
-$uploadError = '';
 $updateMessage = '';
 
-// Fetch current user details
-$stmt = $conn->prepare("SELECT * FROM test WHERE name = ?");
-$stmt->bind_param("s", $username);
-$stmt->execute();
-$result = $stmt->get_result();
+// Fetch current user details including the password
+$query = "SELECT id, name, email, password FROM test WHERE name = '$username'";
+$result = mysqli_query($conn, $query);
 
-if ($result->num_rows > 0) {
-    $user = $result->fetch_assoc();
+if ($result && mysqli_num_rows($result) > 0) {
+    $user = mysqli_fetch_assoc($result);
 } else {
     echo "User not found.";
     exit;
@@ -30,39 +27,22 @@ if ($result->num_rows > 0) {
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $newUsername = $_POST['username'];
     $email = $_POST['email'];
-    $imageName = $user['image_path']; // Default to the existing image name
+    $password = $_POST['password'];
     
-    // Handle image upload
-    if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === UPLOAD_ERR_OK) {
-        $image = $_FILES['profile_image'];
-        $imageName = time() . '_' . basename($image['name']);
-        $imagePath = 'uploads/' . $imageName;
-        
-        if (move_uploaded_file($image['tmp_name'], $imagePath)) {
-            // Delete old image if exists
-            if (!empty($user['image']) && file_exists('uploads/' . $user['image'])) {
-                unlink('uploads/' . $user['image']);
-            }
-        } else {
-            $uploadError = "Failed to upload image.";
-        }
-    }
-    
-    // Update user information in the database
-    $stmt = $conn->prepare("UPDATE test SET name = ?, email = ?, image_path = ? WHERE id = ?");
-    $stmt->bind_param("sssi", $newUsername, $email, $imageName, $user['id']);
+    // Retain the existing password if a new one is not provided
+    $hashedPassword = !empty($password) ? $password : $user['password']; 
 
-    if ($stmt->execute()) {
-        $_SESSION['username'] = $newUsername; // Update session username if changed
+    $updateQuery = "UPDATE test SET name = '$newUsername', email = '$email', password = '$hashedPassword' WHERE id = ".$user['id'];
+    
+    if (mysqli_query($conn, $updateQuery)) {
+        $_SESSION['username'] = $newUsername; 
         $updateMessage = "Profile updated successfully!";
     } else {
         $updateMessage = "Failed to update profile.";
     }
-    
-    $stmt->close();
 }
 
-$conn->close();
+mysqli_close($conn);
 ?>
 
 <!DOCTYPE html>
@@ -78,17 +58,6 @@ $conn->close();
             max-width: 600px;
             margin-top: 50px;
         }
-        .profile-image {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 20px;
-        }
-        .profile-image img {
-            border-radius: 50%;
-            width: 150px;
-            height: 150px;
-            object-fit: cover;
-        }
     </style>
 </head>
 <body>
@@ -100,7 +69,7 @@ $conn->close();
         <div class="alert alert-info text-center"><?php echo $updateMessage; ?></div>
     <?php endif; ?>
 
-    <form action="profile.php" method="POST" enctype="multipart/form-data"> <!-- Corrected action -->
+    <form action="profile.php" method="POST">
         <div class="form-group">
             <label for="username">Username:</label>
             <input type="text" name="username" id="username" class="form-control" value="<?php echo htmlspecialchars($user['name']); ?>" required>
@@ -110,24 +79,12 @@ $conn->close();
             <label for="email">Email:</label>
             <input type="email" name="email" id="email" class="form-control" value="<?php echo htmlspecialchars($user['email']); ?>" required>
         </div>
-
-        <div class="form-group profile-image">
-            <?php if (!empty($user['image'])): ?>
-                <img src="uploads/<?php echo $user['image']; ?>" alt="Profile Image">
-            <?php else: ?>
-                <img src="path/to/default-avatar.png" alt="Default Profile Image">
-            <?php endif; ?>
-        </div>
         
         <div class="form-group">
-            <label for="profile_image">Profile Image:</label>
-            <input type="file" name="profile_image" id="profile_image" class="form-control-file">
+            <label for="password">Password:</label>
+            <input type="password" name="password" id="password" class="form-control" placeholder="Enter new password (leave empty if not changing)">
         </div>
-        
-        <?php if (!empty($uploadError)): ?>
-            <div class="alert alert-danger"><?php echo $uploadError; ?></div>
-        <?php endif; ?>
-        
+
         <button type="submit" class="btn btn-primary btn-block">Update Profile</button>
     </form>
 </div>

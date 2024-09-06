@@ -1,78 +1,51 @@
 <?php
-//session_start();
+session_start();
+
 include 'header.php';
 include 'sidebar.php';
-include 'config/db_connect.php';
+include('config/db_connect.php');
 
-// Assume the admin is logged in and we have the admin's ID in the session
-//$id = $_SESSION['id'];
-// Initialize variables
-$name = "";
-$image_path = "";
-$error = "";
+// Fetch current admin details
+$username = $_SESSION['username'];
+$query = "SELECT * FROM test WHERE name = '$username'";
+$result = mysqli_query($conn, $query);
+$user = mysqli_fetch_assoc($result);
 
-// Fetch current admin data
-$query = "SELECT name, image_path FROM test WHERE id = ?";
-$stmt = $conn->prepare($query);
-$stmt->bind_param("i", $id);
-$stmt->execute();
-$stmt->bind_result($name, $image_path);
-$stmt->fetch();
-$stmt->close();
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if (isset($_FILES['image_path']) && $_FILES['image_path']['error'] == UPLOAD_ERR_OK) {
+        $image = $_FILES['image_path'];
+        $imageName = time() . '_' . basename($image['name']);
+        $imagePath = 'uploads/' . $imageName;
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Sanitize and validate inputs
-    $name = htmlspecialchars(trim($_POST['name']));
-
-    // Check if a new image is uploaded
-    if (!empty($_FILES['image_path']['name'])) {
-        $target_dir = "uploads/";
-        $target_file = $target_dir . basename($_FILES["image_path"]["name"]);
-        $imageFileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
-
-        // Check if the file is an actual image
-        $check = getimagesize($_FILES["image_path"]["tmp_name"]);
-        if ($check === false) {
-            $error = "File is not an image.";
-        }
-
-        // Check file size (limit to 2MB)
-        if ($_FILES["image_path"]["size"] > 2097152) {
-            $error = "Sorry, your file is too large.";
-        }
-
-        // Allow certain file formats
-        if ($imageFileType != "jpg" && $imageFileType != "png" && $imageFileType != "jpeg") {
-            $error = "Sorry, only JPG, JPEG, & PNG files are allowed.";
-        }
-
-        // Check if there were no errors
-        if (empty($error)) {
-            // Upload the file
-            if (move_uploaded_file($_FILES["image_path"]["tmp_name"], $target_file)) {
-                // If the upload was successful, update the profile_image path
-                $image_path = $target_file;
-            } else {
-                $error = "Sorry, there was an error uploading your file.";
+        // Move the uploaded image to the uploads directory
+        if (move_uploaded_file($image['tmp_name'], $imagePath)) {
+            // Delete old image if it exists
+            if (!empty($user['image_path']) && file_exists('uploads/' . $user['image_path'])) {
+                unlink('uploads/' . $user['image_path']);
             }
-        }
-    }
 
-    if (empty($error)) {
-        // Update the admin profile in the database
-        $query = "UPDATE test SET name = ?, image_path = ? WHERE id = ?";
-        $stmt = $conn->prepare($query);
-        $stmt->bind_param("ssi", $name, $image_path, $id);
-        if ($stmt->execute()) {
-            echo "<script>alert('Profile updated successfully!');</script>";
+            // Update the database with the new image path
+            $updateQuery = "UPDATE test SET image_path = '$imageName' WHERE name = '$username'";
+            mysqli_query($conn, $updateQuery);
+
+            // Update session data
+            $_SESSION['image_path'] = $imageName;
+
+            // Redirect to settings page with success message
+            echo "<script>
+            window.location.href = 'setting.php?status=success';
+          </script>";
+
+                exit;
         } else {
-            $error = "Error updating profile: " . $stmt->error;
+            echo "Failed to upload image.";
         }
-        $stmt->close();
+    } else {
+        echo "No image was uploaded.";
     }
 }
 
-$conn->close();
+mysqli_close($conn);
 ?>
 
 <!DOCTYPE html>
@@ -80,35 +53,53 @@ $conn->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Update Profile</title>
+    <title>Settings</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body {
+            padding-top: 50px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 600px;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .alert {
+            margin-bottom: 20px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+            border-color: #004085;
+        }
+        .form-group label {
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
-
-<h2>Update Profile</h2>
-
-<?php if (!empty($error)): ?>
-    <div style="color: red;"><?php echo $error; ?></div>
-<?php endif; ?>
-
-<form action="" method="POST" enctype="multipart/form-data">
-    <div>
-        <label for="name">Name:</label>
-        <input type="text" name="name" value="<?php echo htmlspecialchars($name); ?>" required>
-    </div>
-    <div>
-        <label for="image_path">Profile Image:</label>
-        <input type="file" name="image_path">
-        <?php if (!empty($image_path)): ?>
-            <img src="<?php echo htmlspecialchars($image_path); ?>" alt="Profile Image" style="width: 100px; height: 100px; display: block; margin-top: 10px;">
+    <div class="container">
+        <h2>Change Admin Image</h2>
+        <?php if (isset($_GET['status']) && $_GET['status'] == 'success'): ?>
+            <div class="alert alert-success">Image updated successfully!</div>
         <?php endif; ?>
-    </div>
-    <div>
-        <button type="submit">Update Profile</button>
-    </div>
-</form>
 
+        <form action="setting.php" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="image_path">Upload New Image:</label>
+                <input type="file" name="image_path" id="image_path" class="form-control">
+            </div>
+            <button type="submit" class="btn btn-primary">Update Image</button>
+        </form>
+    </div>
 </body>
 </html>
 <?php
-include('footer.php');
+include 'footer.php';
 ?>

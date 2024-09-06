@@ -2,22 +2,43 @@
 session_start();
 include 'config/db_connect.php';
 
+// Fetch current admin details
+$username = isset($_SESSION['username']) ? $_SESSION['username'] : '';
+$image_path = ''; // Default image path
+
+if ($username) {
+    $query = "SELECT image_path FROM test WHERE name = ?";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("s", $username);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $user = $result->fetch_assoc();
+    
+    if ($user) {
+        $image_path = 'uploads/' . $user['image_path'];
+    }
+
+    $stmt->close();
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = $_POST['username'];
     $password = $_POST['password'];
 
-    $stmt = $conn->prepare("SELECT * FROM test WHERE name = ? AND password = ?");
+    // Prepare the SQL statement with an additional check for role_id = 1
+    $stmt = $conn->prepare("SELECT * FROM test WHERE name = ? AND password = ? AND role_id = 1");
     $stmt->bind_param("ss", $username, $password);
     $stmt->execute();
     $result = $stmt->get_result();
 
-    if ($result->num_rows > 0) {
-        $_SESSION['username'] = $username; 
+    // Check if exactly one user exists with the given username, password, and role_id
+    if ($result->num_rows === 1) {
+        $_SESSION['username'] = $username;
 
-        echo "<script>alert('Login successful! Welcome, " . $username . "');</script>";
+        echo "<script>alert('Login successful! Welcome, " . htmlspecialchars($username) . "');</script>";
         echo "<script>window.location.href='index.php';</script>";
     } else {
-        echo "<script>alert('Invalid username or password.');</script>";
+        echo "<script>alert('Invalid username, password, or insufficient permissions.');</script>";
         echo "<script>window.location.href='login.php';</script>";
     }
 
@@ -55,18 +76,12 @@ $conn->close();
                 <div class="card o-hidden border-0 shadow-lg my-5">
                     <div class="card-body p-0">
                         <div class="row">
-                            <div class="col-lg-6 d-none d-lg-block bg-login-image" style="background-image: url('uploads/<?php echo isset($userImage) ? $userImage : 'default-image.jpg'; ?>');"></div>
+                            <div class="col-lg-6 d-none d-lg-block bg-login-image" style="background-image: url('<?php echo htmlspecialchars($image_path); ?>');"></div>
                             <div class="col-lg-6">
                                 <div class="p-5">
                                     <div class="text-center">
                                         <h1 class="h4 text-gray-900 mb-4">Welcome Back!</h1>
                                     </div>
-
-                                    <?php 
-                                    if(!empty($login_err)){
-                                        echo '<div class="alert alert-danger">' . $login_err . '</div>';
-                                    }        
-                                    ?>
 
                                     <form class="user" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
                                         <div class="form-group">
@@ -76,28 +91,9 @@ $conn->close();
                                         <div class="form-group">
                                             <input type="password" name="password" class="form-control form-control-user" id="exampleInputPassword" placeholder="Password">
                                         </div>
-                                        <div class="form-group">
-                                            <div class="custom-control custom-checkbox small">
-                                                <input type="checkbox" class="custom-control-input" id="customCheck">
-                                                <label class="custom-control-label" for="customCheck">Remember Me</label>
-                                            </div>
-                                        </div>
+                                        
                                         <input type="submit" class="btn btn-primary btn-user btn-block" value="Login">
-                                        <hr>
-                                        <a href="#" class="btn btn-google btn-user btn-block">
-                                            <i class="fab fa-google fa-fw"></i> Login with Google
-                                        </a>
-                                        <a href="#" class="btn btn-facebook btn-user btn-block">
-                                            <i class="fab fa-facebook-f fa-fw"></i> Login with Facebook
-                                        </a>
                                     </form>
-                                    <hr>
-                                    <div class="text-center">
-                                        <a class="small" href="forgot-password.html">Forgot Password?</a>
-                                    </div>
-                                    <div class="text-center">
-                                        <a class="small" href="register.html">Create an Account!</a>
-                                    </div>
                                 </div>
                             </div>
                         </div>
